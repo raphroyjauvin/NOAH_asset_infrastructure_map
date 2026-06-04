@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="initial-scale=1, width=device-width" />
+  <title>CityTwin Infrastructure - Manholes</title>
+  <link rel="stylesheet" href="https://js.arcgis.com/4.32/esri/themes/light/main.css" />
+  <script src="https://js.arcgis.com/4.32/"></script>
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body { display: flex; flex-direction: column; font-family: sans-serif; }
+
+    #statBar { flex: 0 0 auto; display: flex; gap: 10px; padding: 10px; background: #f4f4f4; box-sizing: border-box; }
+    .statBox { flex: 1; background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 10px 12px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .statNum { font-size: 28px; font-weight: 700; line-height: 1.1; }
+    .statLabel { font-size: 12px; color: #6e6e6e; margin-top: 4px; }
+    #statTotal { color: #595959; }
+    #statOperational { color: #1DD833; }
+    #statSurcharged { color: #FFC61E; }
+    #statFlooded { color: #FF0A21; }
+
+    #viewDiv { flex: 1; min-height: 0; }
+
+    #scenarioPanel { padding: 10px 12px; max-width: 240px; }
+    #scenarioPanel label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; color: #323232; }
+    #scenarioPanel select { width: 100%; padding: 6px; font-size: 13px; }
+    #scenarioStatus { margin-top: 8px; font-size: 12px; color: #6e6e6e; }
+  </style>
+</head>
+<body>
+  <div id="statBar">
+    <div class="statBox"><div class="statNum" id="statTotal">—</div><div class="statLabel">Total Manholes</div></div>
+    <div class="statBox"><div class="statNum" id="statOperational">—</div><div class="statLabel">Operational Manholes</div></div>
+    <div class="statBox"><div class="statNum" id="statSurcharged">—</div><div class="statLabel">Surcharged Manholes</div></div>
+    <div class="statBox"><div class="statNum" id="statFlooded">—</div><div class="statLabel">Flooded Manholes</div></div>
+  </div>
+
+  <div id="viewDiv"></div>
+
+  <div id="scenarioPanel" class="esri-widget">
+    <label for="scenarioSelect">Storm scenario</label>
+    <select id="scenarioSelect">
+      <option value="none">No scenario</option>
+      <option value="a">August 1, 2024</option>
+      <option value="b">September 18, 1948</option>
+    </select>
+    <div id="scenarioStatus"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
