@@ -16,7 +16,7 @@ require([
 
     const map = new Map({ basemap: "gray-vector" });
 
-    // ---- August flood polygon (reused). Bottom of the stack, zoom-gated, August only. ----
+    // ---- Flood band renderers (Aug floor 0.15 m, Sep floor 0.1 m; identical colours) ----
     const floodAugRenderer = {
         type: "unique-value",
         field: "max_depth",
@@ -27,6 +27,19 @@ require([
             { value: 0.4,  label: "0.4 m",  symbol: { type: "simple-fill", color: [0, 112, 255],  outline: { width: 0 } } },
             { value: 0.3,  label: "0.3 m",  symbol: { type: "simple-fill", color: [115, 178, 255], outline: { width: 0 } } },
             { value: 0.15, label: "0.15 m", symbol: { type: "simple-fill", color: [190, 210, 255], outline: { width: 0 } } }
+        ]
+    };
+
+    const floodSepRenderer = {
+        type: "unique-value",
+        field: "max_depth",
+        uniqueValueInfos: [
+            { value: 1.5,  label: "1.5 m",  symbol: { type: "simple-fill", color: [132, 0, 168],  outline: { width: 0 } } },
+            { value: 1.2,  label: "1.2 m",  symbol: { type: "simple-fill", color: [0, 38, 115],   outline: { width: 0 } } },
+            { value: 0.8,  label: "0.8 m",  symbol: { type: "simple-fill", color: [0, 77, 168],   outline: { width: 0 } } },
+            { value: 0.4,  label: "0.4 m",  symbol: { type: "simple-fill", color: [0, 112, 255],  outline: { width: 0 } } },
+            { value: 0.3,  label: "0.3 m",  symbol: { type: "simple-fill", color: [115, 178, 255], outline: { width: 0 } } },
+            { value: 0.1,  label: "0.1 m",  symbol: { type: "simple-fill", color: [190, 210, 255], outline: { width: 0 } } }
         ]
     };
 
@@ -41,12 +54,23 @@ require([
     });
     map.add(floodAug);
 
+    const floodSep = new FeatureLayer({
+        url: "https://services1.arcgis.com/KsnB2VOAvO5LjdB4/arcgis/rest/services/sep_18_1948_storm/FeatureServer/42",
+        title: "Flood depth (m)",
+        outFields: ["max_depth"],
+        renderer: floodSepRenderer,
+        opacity: 0.5,
+        minScale: 75000,
+        visible: false
+    });
+    map.add(floodSep);
+
     // ---- Property parcels: wayfinding only, faint grey outline, never storm-coded ----
     const propertyLayer = new FeatureLayer({
-        url: "https://services1.arcgis.com/KsnB2VOAvO5LjdB4/arcgis/rest/services/Toronto_Municipality_Overview_Map_Demo1/FeatureServer/25",
+        url: "https://services1.arcgis.com/KsnB2VOAvO5LjdB4/arcgis/rest/services/Toronto_Municipality_Overview_Map_Demo1/FeatureServer/1",
         title: "Property parcels",
         outFields: ["ADDRESS"],
-        minScale: 36000,   // appears ~4 wheel-scrolls in
+        minScale: 36000,
         renderer: {
             type: "simple",
             symbol: { type: "simple-fill", style: "none", outline: { color: [200, 200, 200], width: 0.5 } }
@@ -72,7 +96,7 @@ require([
         maxScale: 0
     }];
     propertyLayer.labelsVisible = true;
-    map.add(propertyLayer);   // above flood, below manholes
+    map.add(propertyLayer);
 
     // ---- Manhole symbology: pentagon, black hairline, zoom-based size, zoom-gated ----
     const PENTAGON = "M16,0 L31.22,11.06 L25.40,28.94 L6.60,28.94 L0.78,11.06 Z";
@@ -138,10 +162,10 @@ require([
         url: "https://services1.arcgis.com/KsnB2VOAvO5LjdB4/arcgis/rest/services/Muni_Toronto_Manholes_50yr_100yr/FeatureServer/1",
         title: "Manholes",
         outFields: ["asset_id", "flow_type", "install_date", "condition_100yr_aug", "condition_50yr_sep"],
-        minScale: 150000,   // appears ~2 wheel-scrolls in
+        minScale: 150000,
         renderer: neutralManholeRenderer
     });
-    map.add(manholeLayer);   // top of the stack
+    map.add(manholeLayer);
 
     const view = new MapView({
         container: "viewDiv",
@@ -158,6 +182,7 @@ require([
         layerInfos: [
             { layer: manholeLayer },
             { layer: floodAug },
+            { layer: floodSep },
             { layer: propertyLayer }
         ]
     }), "bottom-right");
@@ -209,16 +234,19 @@ require([
             manholeLayer.renderer = neutralManholeRenderer;
             manholeLayer.popupTemplate = manholePopupNone;
             floodAug.visible = false;
+            floodSep.visible = false;
             updateStats(null);
         } else if (scenario === "a") {
             manholeLayer.renderer = rendererAug;
             manholeLayer.popupTemplate = manholePopupAug;
             floodAug.visible = true;
+            floodSep.visible = false;
             updateStats("condition_100yr_aug");
-        } else {
+        } else {  // "b" - September
             manholeLayer.renderer = rendererSep;
             manholeLayer.popupTemplate = manholePopupSep;
             floodAug.visible = false;
+            floodSep.visible = true;
             updateStats("condition_50yr_sep");
         }
     }
