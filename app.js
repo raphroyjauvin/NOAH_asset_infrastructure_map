@@ -26,7 +26,7 @@ require([
             { value: 0.8,  label: "0.8 m",  symbol: { type: "simple-fill", color: [0, 77, 168],   outline: { width: 0 } } },
             { value: 0.4,  label: "0.4 m",  symbol: { type: "simple-fill", color: [0, 112, 255],  outline: { width: 0 } } },
             { value: 0.3,  label: "0.3 m",  symbol: { type: "simple-fill", color: [115, 178, 255], outline: { width: 0 } } },
-            { value: 0.15, label: "0.15 m", symbol: { type: "simple-fill", color: [190, 210, 255], outline: { width: 0 } } }
+            { value: 0.1, label: "0.1 m", symbol: { type: "simple-fill", color: [190, 210, 255], outline: { width: 0 } } }
         ]
     };
 
