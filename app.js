@@ -112,8 +112,8 @@ require([
         stops: [
             { value: 300000, size: 3 },
             { value: 75000,  size: 4 },
-            { value: 18000,  size: 9 },
-            { value: 4500,   size: 14 }
+            { value: 18000,  size: 8 },
+            { value: 4500,   size: 10 }
         ]
     };
 
