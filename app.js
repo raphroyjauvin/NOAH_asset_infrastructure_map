@@ -55,7 +55,7 @@ require([
     map.add(floodAug);
 
     const floodSep = new FeatureLayer({
-        url: "https://services1.arcgis.com/KsnB2VOAvO5LjdB4/arcgis/rest/services/sep_18_1948_storm/FeatureServer/42",
+        url: "https://services1.arcgis.com/KsnB2VOAvO5LjdB4/arcgis/rest/services/sept_1948_storm_complete/FeatureServer/86",
         title: "Flood depth (m)",
         outFields: ["max_depth"],
         renderer: floodSepRenderer,
