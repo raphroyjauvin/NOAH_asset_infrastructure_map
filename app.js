@@ -44,7 +44,7 @@ require([
     };
 
     const floodAug = new FeatureLayer({
-        url: "https://services1.arcgis.com/KsnB2VOAvO5LjdB4/arcgis/rest/services/toronto_aug_1_2024_storm_merged_single/FeatureServer/23",
+        url: "https://services1.arcgis.com/KsnB2VOAvO5LjdB4/arcgis/rest/services/aug_2024_storm_complete/FeatureServer/126",
         title: "Flood depth (m)",
         outFields: ["max_depth"],
         renderer: floodAugRenderer,
