@@ -1,3 +1,13 @@
+/*
+ * CityTwin placeholder map — Toronto manholes, HydroSim P2 flooding status.
+ *
+ * Data is self-hosted alongside this file (no ArcGIS Online dependency):
+ *   data/manholes_p2.csv                    -> produced by merge_manholes_p2.py (EPSG:4326 lon/lat)
+ *   data/tiles/flood_<code>/{z}/{x}/{y}.png  -> optional pre-rendered flood-depth bands per scenario
+ *                                              (QGIS "Generate XYZ tiles (Directory)" with flood_bands_tile_style.qml)
+ *
+ * Adding a scenario = one line in SCENARIOS below (the CSV already carries all ten).
+ */
 require([
     "esri/Map",
     "esri/views/MapView",
@@ -6,9 +16,40 @@ require([
     "esri/widgets/BasemapToggle",
     "esri/widgets/Search",
     "esri/widgets/Legend",
+    "esri/layers/CSVLayer",
+    "esri/layers/WebTileLayer",
     "esri/layers/FeatureLayer"
-], function (Map, MapView, Extent, webMercatorUtils, BasemapToggle, Search, Legend, FeatureLayer) {
+], function (Map, MapView, Extent, webMercatorUtils, BasemapToggle, Search, Legend,
+             CSVLayer, WebTileLayer, FeatureLayer) {
 
+    // ---------------------------------------------------------------------
+    // CONFIG
+    // ---------------------------------------------------------------------
+    const DATA_VERSION = "2026-09-11";            // bump when data files change (cache-buster)
+    const MANHOLES_CSV = "data/manholes_p2.csv";
+
+    // Scenario code = suffix of the S_/D_ columns in the CSV.
+    // "flood" is optional: an XYZ tile folder of pre-rendered depth bands shown when selected.
+    const SCENARIOS = [
+        { code: "AUG0124", label: "August 1, 2024",  flood: "data/tiles/flood_aug0124" },
+        { code: "AUG0821", label: "August 8, 2021" },
+        { code: "AUG1724", label: "August 17, 2024" },
+        { code: "AUG1905", label: "August 19, 2005" },
+        { code: "MAY0117", label: "May 1, 2017" }
+        // Return-period storms are in the CSV too (2YR, 5YR, 10YR, 50YR, 100YR) —
+        // add them here if/when Steve wants them on this map.
+    ];
+
+    // City of Toronto's own public ArcGIS Server (Open Government Licence – Toronto).
+    // Layer 36 = Property Boundary, layer 34 = Property Boundary 5000 (generalised).
+    // Set to null to run without parcels if the service misbehaves.
+    const PARCELS_URL = "https://gis.toronto.ca/arcgis/rest/services/cot_geospatial27/FeatureServer/36";
+
+    const v = (url) => url + "?v=" + DATA_VERSION;
+
+    // ---------------------------------------------------------------------
+    // MAP / EXTENT
+    // ---------------------------------------------------------------------
     const torontoExtent = webMercatorUtils.geographicToWebMercator(new Extent({
         xmin: -79.65, ymin: 43.55, xmax: -79.10, ymax: 43.88,
         spatialReference: { wkid: 4326 }
@@ -16,89 +57,80 @@ require([
 
     const map = new Map({ basemap: "gray-vector" });
 
-    // ---- Flood band renderers (Aug floor 0.15 m, Sep floor 0.1 m; identical colours) ----
-    const floodAugRenderer = {
-        type: "unique-value",
-        field: "max_depth",
-        uniqueValueInfos: [
-            { value: 1.5,  label: "1.5 m",  symbol: { type: "simple-fill", color: [132, 0, 168],  outline: { width: 0 } } },
-            { value: 1.2,  label: "1.2 m",  symbol: { type: "simple-fill", color: [0, 38, 115],   outline: { width: 0 } } },
-            { value: 0.8,  label: "0.8 m",  symbol: { type: "simple-fill", color: [0, 77, 168],   outline: { width: 0 } } },
-            { value: 0.4,  label: "0.4 m",  symbol: { type: "simple-fill", color: [0, 112, 255],  outline: { width: 0 } } },
-            { value: 0.3,  label: "0.3 m",  symbol: { type: "simple-fill", color: [115, 178, 255], outline: { width: 0 } } },
-            { value: 0.1, label: "0.1 m", symbol: { type: "simple-fill", color: [190, 210, 255], outline: { width: 0 } } }
-        ]
-    };
+    // ---------------------------------------------------------------------
+    // FLOOD BANDS — pre-rendered raster tiles (lazy: created the first time a scenario is selected)
+    // ---------------------------------------------------------------------
+    const FLOOD_LEGEND = [
+        { label: "1.5 m",  color: "rgb(132,0,168)" },
+        { label: "1.2 m",  color: "rgb(0,38,115)" },
+        { label: "0.8 m",  color: "rgb(0,77,168)" },
+        { label: "0.4 m",  color: "rgb(0,112,255)" },
+        { label: "0.3 m",  color: "rgb(115,178,255)" },
+        { label: "0.15 m", color: "rgb(190,210,255)" }
+    ];
 
-    const floodSepRenderer = {
-        type: "unique-value",
-        field: "max_depth",
-        uniqueValueInfos: [
-            { value: 1.5,  label: "1.5 m",  symbol: { type: "simple-fill", color: [132, 0, 168],  outline: { width: 0 } } },
-            { value: 1.2,  label: "1.2 m",  symbol: { type: "simple-fill", color: [0, 38, 115],   outline: { width: 0 } } },
-            { value: 0.8,  label: "0.8 m",  symbol: { type: "simple-fill", color: [0, 77, 168],   outline: { width: 0 } } },
-            { value: 0.4,  label: "0.4 m",  symbol: { type: "simple-fill", color: [0, 112, 255],  outline: { width: 0 } } },
-            { value: 0.3,  label: "0.3 m",  symbol: { type: "simple-fill", color: [115, 178, 255], outline: { width: 0 } } },
-            { value: 0.1,  label: "0.1 m",  symbol: { type: "simple-fill", color: [190, 210, 255], outline: { width: 0 } } }
-        ]
-    };
-
-    const floodAug = new FeatureLayer({
-        url: "https://services1.arcgis.com/KsnB2VOAvO5LjdB4/arcgis/rest/services/aug_2024_storm_complete/FeatureServer/126",
-        title: "Flood depth (m)",
-        outFields: ["max_depth"],
-        renderer: floodAugRenderer,
-        opacity: 0.5,
-        minScale: 75000,
-        visible: false
-    });
-    map.add(floodAug);
-
-    const floodSep = new FeatureLayer({
-        url: "https://services1.arcgis.com/KsnB2VOAvO5LjdB4/arcgis/rest/services/sept_1948_storm_complete/FeatureServer/86",
-        title: "Flood depth (m)",
-        outFields: ["max_depth"],
-        renderer: floodSepRenderer,
-        opacity: 0.5,
-        minScale: 75000,
-        visible: false
-    });
-    map.add(floodSep);
-
-    // ---- Property parcels: wayfinding only, faint grey outline, never storm-coded ----
-    const propertyLayer = new FeatureLayer({
-        url: "https://services1.arcgis.com/KsnB2VOAvO5LjdB4/arcgis/rest/services/Toronto_Municipality_Overview_Map_Demo1/FeatureServer/25",
-        title: "Property parcels",
-        outFields: ["ADDRESS"],
-        minScale: 36000,
-        renderer: {
-            type: "simple",
-            symbol: { type: "simple-fill", style: "none", outline: { color: [200, 200, 200], width: 0.5 } }
+    const floodLayers = {};   // code -> WebTileLayer
+    function getFloodLayer(sc) {
+        if (!sc || !sc.flood) return null;
+        if (!floodLayers[sc.code]) {
+            const base = new URL(sc.flood + "/", window.location.href).href;
+            const lyr = new WebTileLayer({
+                urlTemplate: base + "{level}/{col}/{row}.png",
+                title: "Flood depth (m) — " + sc.label,
+                opacity: 0.5,
+                minScale: 75000,
+                visible: false,
+                legendEnabled: false
+            });
+            // Tiles outside the zoom range rendered in QGIS simply 404 (blank); minScale 75000 ~ z13.
+            lyr.when(null, function (err) {
+                console.warn("Flood tiles failed for " + sc.code + ": " + err.message);
+            });
+            floodLayers[sc.code] = lyr;
+            map.add(lyr, 0);   // bottom of the stack: below parcels and manholes
         }
-    });
-    propertyLayer.labelingInfo = [{
-        labelExpressionInfo: {
-            expression: `
-                var addr = Trim($feature.ADDRESS);
-                if (IsEmpty(addr) || addr == 'None None') { return ''; }
-                return addr;
-            `
-        },
-        symbol: {
-            type: "text",
-            color: [50, 50, 50],
-            haloColor: [255, 255, 255],
-            haloSize: 1,
-            font: { size: 9, family: "sans-serif" }
-        },
-        labelPlacement: "always-horizontal",
-        minScale: 1500,
-        maxScale: 0
-    }];
-    propertyLayer.labelsVisible = true;
-    map.add(propertyLayer);
+        return floodLayers[sc.code];
+    }
 
-    // ---- Manhole symbology: pentagon, black hairline, zoom-based size, zoom-gated ----
+    // Small HTML legend for the flood ramp (raster tiles can't feed the Legend widget)
+    const floodLegendDiv = document.getElementById("floodLegend");
+    function renderFloodLegend(sc) {
+        if (!sc || !sc.flood) { floodLegendDiv.style.display = "none"; return; }
+        floodLegendDiv.innerHTML = "<div class='floodLegendTitle'>Flood depth — " + sc.label + "</div>" +
+            FLOOD_LEGEND.map(function (b) {
+                return "<div class='floodLegendRow'><span class='floodSwatch' style='background:" + b.color +
+                       "'></span>" + b.label + "</div>";
+            }).join("");
+        floodLegendDiv.style.display = "block";
+    }
+
+    // ---------------------------------------------------------------------
+    // PROPERTY PARCELS — wayfinding only, faint grey outline, never storm-coded
+    // ---------------------------------------------------------------------
+    let propertyLayer = null;
+    if (PARCELS_URL) {
+        propertyLayer = new FeatureLayer({
+            url: PARCELS_URL,
+            title: "Property parcels",
+            outFields: [],
+            minScale: 36000,
+            popupEnabled: false,
+            legendEnabled: false,
+            renderer: {
+                type: "simple",
+                symbol: { type: "simple-fill", style: "none", outline: { color: [200, 200, 200], width: 0.5 } }
+            }
+        });
+        propertyLayer.when(null, function (err) {
+            console.warn("Parcels service unavailable, continuing without it: " + err.message);
+            map.remove(propertyLayer);
+        });
+        map.add(propertyLayer);
+    }
+
+    // ---------------------------------------------------------------------
+    // MANHOLES — pentagon, black hairline, zoom-based size, zoom-gated
+    // ---------------------------------------------------------------------
     const PENTAGON = "M16,0 L31.22,11.06 L25.40,28.94 L6.60,28.94 L0.78,11.06 Z";
     const blackHairline = { color: [0, 0, 0], width: 0.5 };
 
@@ -119,8 +151,8 @@ require([
 
     const darkGrey = [89, 89, 89];
     const opColor  = [29, 216, 51];
-    const suColor  = [255, 198, 30];
     const flColor  = [255, 10, 33];
+    const ndColor  = [160, 160, 160];
 
     const neutralManholeRenderer = {
         type: "simple",
@@ -128,45 +160,71 @@ require([
         visualVariables: [sizeVV]
     };
 
-    function manholeRenderer(field) {
+    function manholeRenderer(code) {
         return {
             type: "unique-value",
-            field: field,
-            defaultSymbol: pentagon(darkGrey),
+            field: "S_" + code,
+            defaultSymbol: pentagon(ndColor),
+            defaultLabel: "No model output",
             uniqueValueInfos: [
-                { value: "Operational", label: "Operational", symbol: pentagon(opColor) },
-                { value: "Surcharged",  label: "Surcharged",  symbol: pentagon(suColor) },
-                { value: "Flooded",     label: "Flooded",     symbol: pentagon(flColor) }
+                { value: "OK",      label: "Operational", symbol: pentagon(opColor) },
+                { value: "FLOODED", label: "Flooded",     symbol: pentagon(flColor) }
+                // NO_DATA (and anything unexpected) falls through to defaultSymbol / defaultLabel
             ],
             visualVariables: [sizeVV]
         };
     }
-    const rendererAug = manholeRenderer("condition_100yr_aug");
-    const rendererSep = manholeRenderer("condition_50yr_sep");
 
-    function makeManholePopup(conditionField) {
-        const fieldInfos = [
-            { fieldName: "flow_type", label: "Flow type" },
-            { fieldName: "install_date", label: "Install date" }
-        ];
-        if (conditionField) {
-            fieldInfos.push({ fieldName: conditionField, label: "Condition" });
+    const baseFieldInfos = [
+        { fieldName: "sewer_type",   label: "Sewer type" },
+        { fieldName: "install_date", label: "Install date" },
+        { fieldName: "top_elev",     label: "Rim elevation (m)", format: { places: 2 } },
+        { fieldName: "target",       label: "Sewershed / group" }
+    ];
+
+    function makeManholePopup(sc) {
+        const fieldInfos = baseFieldInfos.slice();
+        const expressionInfos = [];
+        if (sc) {
+            expressionInfos.push({
+                name: "status",
+                title: "Status — " + sc.label,
+                expression:
+                    "var s = $feature.S_" + sc.code + ";" +
+                    "When(s == 'OK', 'Operational', s == 'FLOODED', 'Flooded', 'No model output')"
+            });
+            expressionInfos.push({
+                name: "depth",
+                title: "Max flood depth — " + sc.label,
+                expression:
+                    "var d = $feature.D_" + sc.code + ";" +
+                    "IIf(IsEmpty(d), 'No model output', Text(Round(Number(d), 2)) + ' m')"
+            });
+            fieldInfos.unshift({ fieldName: "expression/depth" });
+            fieldInfos.unshift({ fieldName: "expression/status" });
         }
-        return { title: "Manhole {asset_id}", content: [{ type: "fields", fieldInfos: fieldInfos }] };
+        return {
+            title: "Manhole {asset_id}",
+            expressionInfos: expressionInfos,
+            content: [{ type: "fields", fieldInfos: fieldInfos }]
+        };
     }
-    const manholePopupNone = makeManholePopup(null);
-    const manholePopupAug  = makeManholePopup("condition_100yr_aug");
-    const manholePopupSep  = makeManholePopup("condition_50yr_sep");
 
-    const manholeLayer = new FeatureLayer({
-        url: "https://services1.arcgis.com/KsnB2VOAvO5LjdB4/arcgis/rest/services/Muni_Toronto_Manholes_50yr_100yr/FeatureServer/1",
+    const manholeLayer = new CSVLayer({
+        url: v(MANHOLES_CSV),
+        latitudeField: "lat",
+        longitudeField: "lon",
         title: "Manholes",
-        outFields: ["asset_id", "flow_type", "install_date", "condition_100yr_aug", "condition_50yr_sep"],
+        outFields: ["*"],
         minScale: 150000,
-        renderer: neutralManholeRenderer
+        renderer: neutralManholeRenderer,
+        popupTemplate: makeManholePopup(null)
     });
     map.add(manholeLayer);
 
+    // ---------------------------------------------------------------------
+    // VIEW + WIDGETS
+    // ---------------------------------------------------------------------
     const view = new MapView({
         container: "viewDiv",
         map: map,
@@ -177,81 +235,99 @@ require([
 
     view.ui.add(new Search({ view: view }), "top-right");
     view.ui.add(new BasemapToggle({ view: view, nextBasemap: "hybrid" }), "bottom-left");
-    view.ui.add(new Legend({
-        view: view,
-        layerInfos: [
-            { layer: manholeLayer },
-            { layer: floodAug },
-            { layer: floodSep },
-            { layer: propertyLayer }
-        ]
-    }), "bottom-right");
+    view.ui.add(new Legend({ view: view }), "bottom-right");   // manholes (+ parcels) legend
+    view.ui.add(document.getElementById("floodLegend"), { position: "bottom-right", index: 0 });
 
-    // ---- Scenario selector ----
+    // ---------------------------------------------------------------------
+    // SCENARIO SELECTOR (options built from SCENARIOS)
+    // ---------------------------------------------------------------------
     const scenarioPanel  = document.getElementById("scenarioPanel");
     const scenarioSelect = document.getElementById("scenarioSelect");
     const scenarioStatus = document.getElementById("scenarioStatus");
     view.ui.add(scenarioPanel, { position: "top-left", index: 0 });
 
-    const labels = { a: "August 1, 2024", b: "September 18, 1948" };
+    SCENARIOS.forEach(function (sc) {
+        const opt = document.createElement("option");
+        opt.value = sc.code;
+        opt.textContent = sc.label;
+        scenarioSelect.appendChild(opt);
+    });
 
-    // ---- Stat boxes ----
+    // ---------------------------------------------------------------------
+    // STAT BOXES
+    // ---------------------------------------------------------------------
     const statTotal       = document.getElementById("statTotal");
     const statOperational = document.getElementById("statOperational");
-    const statSurcharged  = document.getElementById("statSurcharged");
     const statFlooded     = document.getElementById("statFlooded");
 
     function setStat(el, n) { el.textContent = (n == null) ? "—" : n.toLocaleString(); }
 
-    manholeLayer.queryFeatureCount().then(function (n) { setStat(statTotal, n); });
+    manholeLayer.when(function () {
+        manholeLayer.queryFeatureCount().then(function (n) { setStat(statTotal, n); });
+    }, function (err) {
+        scenarioStatus.textContent = "Manhole data failed to load: " + err.message;
+        console.error(err);
+    });
 
     const statusCache = {};
-    function updateStats(field) {
-        if (!field) {
-            setStat(statOperational, null); setStat(statSurcharged, null); setStat(statFlooded, null);
-            return;
+    function updateStats(sc) {
+        if (!sc) {
+            setStat(statOperational, null); setStat(statFlooded, null);
+            return Promise.resolve(null);
         }
-        if (statusCache[field]) {
-            const c = statusCache[field];
-            setStat(statOperational, c.op); setStat(statSurcharged, c.su); setStat(statFlooded, c.fl);
-            return;
+        if (statusCache[sc.code]) {
+            const c = statusCache[sc.code];
+            setStat(statOperational, c.ok); setStat(statFlooded, c.fl);
+            return Promise.resolve(c);
         }
-        Promise.all([
-            manholeLayer.queryFeatureCount({ where: field + " = 'Operational'" }),
-            manholeLayer.queryFeatureCount({ where: field + " = 'Surcharged'" }),
-            manholeLayer.queryFeatureCount({ where: field + " = 'Flooded'" })
-        ]).then(function (r) {
-            statusCache[field] = { op: r[0], su: r[1], fl: r[2] };
-            setStat(statOperational, r[0]); setStat(statSurcharged, r[1]); setStat(statFlooded, r[2]);
+        const f = "S_" + sc.code;
+        return manholeLayer.when().then(function () {
+            return Promise.all([
+                manholeLayer.queryFeatureCount({ where: f + " = 'OK'" }),
+                manholeLayer.queryFeatureCount({ where: f + " = 'FLOODED'" }),
+                manholeLayer.queryFeatureCount({ where: f + " = 'NO_DATA'" })
+            ]);
+        }).then(function (r) {
+            const c = { ok: r[0], fl: r[1], nd: r[2] };
+            statusCache[sc.code] = c;
+            setStat(statOperational, c.ok); setStat(statFlooded, c.fl);
+            return c;
         });
     }
 
-    function applyScenario(scenario) {
-        scenarioStatus.textContent =
-            (scenario === "none") ? "No scenario selected" : "Showing: " + labels[scenario];
+    // ---------------------------------------------------------------------
+    // APPLY SCENARIO
+    // ---------------------------------------------------------------------
+    function applyScenario(code) {
+        const sc = SCENARIOS.find(function (s) { return s.code === code; }) || null;
 
-        if (scenario === "none") {
+        // hide every flood layer, then show the selected one (if it has one)
+        Object.keys(floodLayers).forEach(function (k) { floodLayers[k].visible = false; });
+
+        renderFloodLegend(sc);
+
+        if (!sc) {
+            scenarioStatus.textContent = "No scenario selected";
             manholeLayer.renderer = neutralManholeRenderer;
-            manholeLayer.popupTemplate = manholePopupNone;
-            floodAug.visible = false;
-            floodSep.visible = false;
+            manholeLayer.popupTemplate = makeManholePopup(null);
             updateStats(null);
-        } else if (scenario === "a") {
-            manholeLayer.renderer = rendererAug;
-            manholeLayer.popupTemplate = manholePopupAug;
-            floodAug.visible = true;
-            floodSep.visible = false;
-            updateStats("condition_100yr_aug");
-        } else {  // "b" - September
-            manholeLayer.renderer = rendererSep;
-            manholeLayer.popupTemplate = manholePopupSep;
-            floodAug.visible = false;
-            floodSep.visible = true;
-            updateStats("condition_50yr_sep");
+            return;
         }
+
+        manholeLayer.renderer = manholeRenderer(sc.code);
+        manholeLayer.popupTemplate = makeManholePopup(sc);
+
+        const fl = getFloodLayer(sc);
+        if (fl) fl.visible = true;
+
+        scenarioStatus.textContent = "Showing: " + sc.label + (fl ? "" : " (no flood extent for this event)");
+        updateStats(sc).then(function (c) {
+            if (c && c.nd > 0) {
+                scenarioStatus.textContent += " · " + c.nd.toLocaleString() + " manholes without model output";
+            }
+        });
     }
 
-    scenarioSelect.addEventListener("change", (e) => applyScenario(e.target.value));
+    scenarioSelect.addEventListener("change", function (e) { applyScenario(e.target.value); });
     applyScenario(scenarioSelect.value);
-
 });

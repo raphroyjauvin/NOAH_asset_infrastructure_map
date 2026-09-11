@@ -16,22 +16,25 @@
     .statLabel { font-size: 12px; color: #6e6e6e; margin-top: 4px; }
     #statTotal { color: #595959; }
     #statOperational { color: #1DD833; }
-    #statSurcharged { color: #FFC61E; }
     #statFlooded { color: #FF0A21; }
 
     #viewDiv { flex: 1; min-height: 0; }
 
-    #scenarioPanel { padding: 10px 12px; max-width: 240px; }
+    #scenarioPanel { padding: 10px 12px; max-width: 260px; }
     #scenarioPanel label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; color: #323232; }
     #scenarioPanel select { width: 100%; padding: 6px; font-size: 13px; }
     #scenarioStatus { margin-top: 8px; font-size: 12px; color: #6e6e6e; }
+
+    #floodLegend { display: none; padding: 8px 12px; font-size: 12px; color: #323232; }
+    .floodLegendTitle { font-weight: 600; margin-bottom: 4px; }
+    .floodLegendRow { display: flex; align-items: center; gap: 6px; line-height: 18px; }
+    .floodSwatch { display: inline-block; width: 18px; height: 12px; opacity: 0.5; border: 1px solid #ccc; }
   </style>
 </head>
 <body>
   <div id="statBar">
     <div class="statBox"><div class="statNum" id="statTotal">—</div><div class="statLabel">Total Manholes</div></div>
     <div class="statBox"><div class="statNum" id="statOperational">—</div><div class="statLabel">Operational Manholes</div></div>
-    <div class="statBox"><div class="statNum" id="statSurcharged">—</div><div class="statLabel">Surcharged Manholes</div></div>
     <div class="statBox"><div class="statNum" id="statFlooded">—</div><div class="statLabel">Flooded Manholes</div></div>
   </div>
 
@@ -41,11 +44,12 @@
     <label for="scenarioSelect">Storm scenario</label>
     <select id="scenarioSelect">
       <option value="none">No scenario</option>
-      <option value="a">August 1, 2024</option>
-      <option value="b">September 18, 1948</option>
+      <!-- storm options are added by app.js from its SCENARIOS table -->
     </select>
     <div id="scenarioStatus"></div>
   </div>
+
+  <div id="floodLegend" class="esri-widget"></div>
 
   <script src="app.js"></script>
 </body>
