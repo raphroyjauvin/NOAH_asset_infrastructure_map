@@ -32,13 +32,16 @@ require([
     // Scenario code = suffix of the S_/D_ columns in the CSV.
     // "flood" is optional: an XYZ tile folder of pre-rendered depth bands shown when selected.
     const SCENARIOS = [
+        { code: "2YR",     label: "2-year design storm" },
+        { code: "5YR",     label: "5-year design storm" },
+        { code: "10YR",    label: "10-year design storm" },
+        { code: "50YR",    label: "50-year design storm" },
+        { code: "100YR",   label: "100-year design storm" },
         { code: "AUG0124", label: "August 1, 2024",  flood: "data/tiles/flood_aug0124" },
         { code: "AUG0821", label: "August 8, 2021" },
         { code: "AUG1724", label: "August 17, 2024" },
         { code: "AUG1905", label: "August 19, 2005" },
         { code: "MAY0117", label: "May 1, 2017" }
-        // Return-period storms are in the CSV too (2YR, 5YR, 10YR, 50YR, 100YR) —
-        // add them here if/when Steve wants them on this map.
     ];
 
     // City of Toronto's own public ArcGIS Server (Open Government Licence – Toronto).
