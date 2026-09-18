@@ -7,6 +7,7 @@
  *                                              (QGIS "Generate XYZ tiles (Directory)" with flood_bands_tile_style.qml)
  *
  * Adding a scenario = one line in SCENARIOS below (the CSV already carries all ten).
+ * Status values in S_<code>: OK / SURCHARGED / FLOODED / NO_DATA (see merge_manholes_p2.py for the rule).
  */
 require([
     "esri/Map",
@@ -25,7 +26,7 @@ require([
     // ---------------------------------------------------------------------
     // CONFIG
     // ---------------------------------------------------------------------
-    const DATA_VERSION = "2026-09-11";            // bump when data files change (cache-buster)
+    const DATA_VERSION = "2026-09-18";            // bump when data files change (cache-buster)
     const MANHOLES_CSV = "data/manholes_p2.csv";
 
     // Scenario code = suffix of the S_/D_ columns in the CSV.
@@ -151,6 +152,7 @@ require([
 
     const darkGrey = [89, 89, 89];
     const opColor  = [29, 216, 51];
+    const suColor  = [255, 198, 30];
     const flColor  = [255, 10, 33];
     const ndColor  = [160, 160, 160];
 
@@ -167,8 +169,9 @@ require([
             defaultSymbol: pentagon(ndColor),
             defaultLabel: "No model output",
             uniqueValueInfos: [
-                { value: "OK",      label: "Operational", symbol: pentagon(opColor) },
-                { value: "FLOODED", label: "Flooded",     symbol: pentagon(flColor) }
+                { value: "OK",         label: "Operational", symbol: pentagon(opColor) },
+                { value: "SURCHARGED", label: "Surcharged",  symbol: pentagon(suColor) },
+                { value: "FLOODED",    label: "Flooded",     symbol: pentagon(flColor) }
                 // NO_DATA (and anything unexpected) falls through to defaultSymbol / defaultLabel
             ],
             visualVariables: [sizeVV]
@@ -191,7 +194,7 @@ require([
                 title: "Status — " + sc.label,
                 expression:
                     "var s = $feature.S_" + sc.code + ";" +
-                    "When(s == 'OK', 'Operational', s == 'FLOODED', 'Flooded', 'No model output')"
+                    "When(s == 'OK', 'Operational', s == 'SURCHARGED', 'Surcharged', s == 'FLOODED', 'Flooded', 'No model output')"
             });
             expressionInfos.push({
                 name: "depth",
@@ -200,6 +203,14 @@ require([
                     "var d = $feature.D_" + sc.code + ";" +
                     "IIf(IsEmpty(d), 'No model output', Text(Round(Number(d), 2)) + ' m')"
             });
+            expressionInfos.push({
+                name: "pipe",
+                title: "Downstream pipe surcharge — " + sc.label,
+                expression:
+                    "var p = $feature.P_" + sc.code + ";" +
+                    "IIf(IsEmpty(p), 'No pipe record', Text(Round(Number(p), 2)))"
+            });
+            fieldInfos.unshift({ fieldName: "expression/pipe" });
             fieldInfos.unshift({ fieldName: "expression/depth" });
             fieldInfos.unshift({ fieldName: "expression/status" });
         }
@@ -258,6 +269,7 @@ require([
     // ---------------------------------------------------------------------
     const statTotal       = document.getElementById("statTotal");
     const statOperational = document.getElementById("statOperational");
+    const statSurcharged  = document.getElementById("statSurcharged");
     const statFlooded     = document.getElementById("statFlooded");
 
     function setStat(el, n) { el.textContent = (n == null) ? "—" : n.toLocaleString(); }
@@ -272,25 +284,26 @@ require([
     const statusCache = {};
     function updateStats(sc) {
         if (!sc) {
-            setStat(statOperational, null); setStat(statFlooded, null);
+            setStat(statOperational, null); setStat(statSurcharged, null); setStat(statFlooded, null);
             return Promise.resolve(null);
         }
         if (statusCache[sc.code]) {
             const c = statusCache[sc.code];
-            setStat(statOperational, c.ok); setStat(statFlooded, c.fl);
+            setStat(statOperational, c.ok); setStat(statSurcharged, c.su); setStat(statFlooded, c.fl);
             return Promise.resolve(c);
         }
         const f = "S_" + sc.code;
         return manholeLayer.when().then(function () {
             return Promise.all([
                 manholeLayer.queryFeatureCount({ where: f + " = 'OK'" }),
+                manholeLayer.queryFeatureCount({ where: f + " = 'SURCHARGED'" }),
                 manholeLayer.queryFeatureCount({ where: f + " = 'FLOODED'" }),
                 manholeLayer.queryFeatureCount({ where: f + " = 'NO_DATA'" })
             ]);
         }).then(function (r) {
-            const c = { ok: r[0], fl: r[1], nd: r[2] };
+            const c = { ok: r[0], su: r[1], fl: r[2], nd: r[3] };
             statusCache[sc.code] = c;
-            setStat(statOperational, c.ok); setStat(statFlooded, c.fl);
+            setStat(statOperational, c.ok); setStat(statSurcharged, c.su); setStat(statFlooded, c.fl);
             return c;
         });
     }
